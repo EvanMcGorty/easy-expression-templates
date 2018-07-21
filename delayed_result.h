@@ -1,5 +1,4 @@
-#include<utility>
-#include<string>
+#include<type_traits>
 
 namespace expression_templates
 {
@@ -10,27 +9,42 @@ namespace expression_templates
         class delayed_result
         {
             template<typename t>
-            friend class taker;
+            friend struct taker;
         public:
             delayed_result(funct_t&& a) :
                 res(std::move(a))
             {}
+
+            delayed_result(delayed_result&&) = default;
+            delayed_result(delayed_result const&) = default;
+
         private:
             funct_t res;
         };
 
+		template<typename t>
+		struct taken
+		{
+			using type = t&;
+		};
+
+		template<typename t>
+		struct taken<delayed_result<t>>
+		{
+			using type = decltype(std::declval<t>()());
+		};
 
         template<typename t>
         struct taker
         {
-            static t on(t&& a)
+            static t& on(t& a)
             {
-                return std::forward<t>(a);
+                return a;
             }
         };
 
         template<typename t>
-        struct taker<delayed_result<t>&>
+        struct taker<delayed_result<t>>
         {
             static auto on(delayed_result<t>& a)
             {
@@ -39,22 +53,22 @@ namespace expression_templates
         };
 
         template<typename t>
-        auto take(t&& a)
+        typename taken<t>::type take(t& a)
         {
-            return taker<t>::on(std::forward<t>(a));
+            return taker<t>::on(a);
         }
 
         
         template<typename funct_t, typename...args_t>
-        auto call(funct_t to_call, args_t&&...args)
+        auto call(funct_t&& to_call, args_t&&...args)
         {
-            auto lambda = 
+            auto&& lambda = 
                 [&]()
                 {
-                    return to_call(take(std::forward<args_t>(args))...);
+                    return std::move(to_call)(std::forward<taken<args_t>::type>(take(args))...);
                 };
 
-            return delayed_result<decltype(lambda)>(std::move(lambda));
+            return delayed_result<std::remove_reference_t<decltype(lambda)>>(std::move(lambda));
         }
     }
 }
