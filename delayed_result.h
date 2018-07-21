@@ -76,7 +76,7 @@ namespace expression_templates
 
         
         template<typename funct_t, typename...args_t>
-        auto call(funct_t&& to_call, args_t&&...args)
+        auto call(funct_t&& to_call, args_t&...args)
         {
             auto&& lambda = 
                 [&]()
