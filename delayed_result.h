@@ -1,4 +1,5 @@
 #include<type_traits>
+#include<utility>
 
 namespace expression_templates
 {
@@ -80,7 +81,7 @@ namespace expression_templates
             auto&& lambda = 
                 [&]()
                 {
-                    return std::move(to_call)(std::forward<taken<args_t>::type>(take(args))...);
+                    return std::move(to_call)(std::forward<typename taken<args_t>::type>(take(args))...);
                 };
 
             return delayed_result<std::remove_reference_t<decltype(lambda)>>(std::move(lambda));
