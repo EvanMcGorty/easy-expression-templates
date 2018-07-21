@@ -34,6 +34,12 @@ namespace expression_templates
 			using type = decltype(std::declval<t>()());
 		};
 
+		template<typename t>
+		struct taken<delayed_result<t>&>
+		{
+			using type = decltype(std::declval<t>()());
+		};
+
         template<typename t>
         struct taker
         {
@@ -51,6 +57,15 @@ namespace expression_templates
                 return std::move(a.res)();
             }
         };
+
+		template<typename t>
+		struct taker<delayed_result<t>&>
+		{
+			static auto on(delayed_result<t>& a)
+			{
+				return std::move(a.res)();
+			}
+		};
 
         template<typename t>
         typename taken<t>::type take(t& a)
