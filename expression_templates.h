@@ -1,10 +1,13 @@
 #include<type_traits>
 #include<utility>
+#include<functional>
 
 namespace expression_templates
 {
 	namespace impl
 	{
+		template<typename t>
+		using return_type_t = std::result_of_t<t>;
 
 		template<typename funct_t>
 		class delayed_result
@@ -26,19 +29,25 @@ namespace expression_templates
 		template<typename t>
 		struct taken
 		{
-			using type = t & ;
+			using type = t&;
+		};
+
+		template<typename t>
+		struct taken<t&>
+		{
+			using type = t&;
 		};
 
 		template<typename t>
 		struct taken<delayed_result<t>>
 		{
-			using type = decltype(std::declval<t>()());
+			using type = return_type_t<t>;
 		};
 
 		template<typename t>
 		struct taken<delayed_result<t>&>
 		{
-			using type = decltype(std::declval<t>()());
+			using type = return_type_t<t>;
 		};
 
 		template<typename t>
@@ -58,6 +67,8 @@ namespace expression_templates
 			{
 				return a;
 			}
+
+			using prepared_t = t&&;
 		};
 
 		template<typename t>
@@ -77,6 +88,7 @@ namespace expression_templates
 			{
 				return &a;
 			}
+			using prepared_t = t*&&;
 		};
 
 		template<typename t>
@@ -96,6 +108,8 @@ namespace expression_templates
 			{
 				return a;
 			}
+
+			using prepared_t = delayed_result<t>&&;
 		};
 
 		template<typename t>
@@ -115,6 +129,8 @@ namespace expression_templates
 			{
 				return &a;
 			}
+
+			using prepared_t = delayed_result<t>*&&;
 		};
 
 		template<typename t>
@@ -128,10 +144,15 @@ namespace expression_templates
 		auto call(funct_t&& to_call, args_t&&...args)
 		{
 			auto&& lambda =
-				[to_call = std::move(to_call), args = taker<args_t>::prepare(std::forward<args_t>(args))...]() mutable
-			{
-				return std::move(to_call)(std::forward<typename taken<args_t>::type>(take<args_t>(taker<args_t>::unprepare(args)))...);
-			};
+			std::bind
+			(
+				[](funct_t&& l_to_call, typename taker<args_t>::prepared_t...l_args) mutable
+				{
+					return std::move(l_to_call)(std::forward<typename taken<args_t>::type>(take<args_t>(taker<args_t>::unprepare(l_args)))...);
+				},
+				std::move(to_call),
+				taker<args_t>::prepare(std::forward<args_t>(args))...
+			);
 
 			return delayed_result<std::remove_reference_t<decltype(lambda)>>(std::move(lambda));
 		}
