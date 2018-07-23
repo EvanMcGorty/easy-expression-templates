@@ -13,20 +13,22 @@ namespace expression_templates
 			template<typename ty>
 			friend value<ty> take(ty&& a);
 			friend struct result_maker;
+			template<typename ty>
+			friend struct types;
 		public:
 
 			value(value&& a) :
 				held(std::move(a.held))
 			{}
+			
+			~value() = default;
+
+		private:
 
 			t operator()() const
 			{
 				return std::move(held);
 			}
-			
-			~value() = default;
-
-		private:
 
 			value(t&& a) :
 				held(std::move(a))
@@ -48,6 +50,8 @@ namespace expression_templates
 			template<typename ty>
 			friend value<ty&> ref(ty& a);
 			friend struct result_maker;
+			template<typename ty>
+			friend struct types;
 		public:
 
 			value(value&& a)
@@ -55,14 +59,14 @@ namespace expression_templates
 				held = a.held;
 			}
 
+			~value() = default;
+		
+		private:
+
 			t& operator()() const
 			{
 				return *held;
 			}
-
-			~value() = default;
-		
-		private:
 
 			value(t& a) :
 				held(&a)
@@ -84,22 +88,23 @@ namespace expression_templates
 		{
 			template<typename ty>
 			friend value<ty&&> use(ty&& a);
-			friend struct result_maker;
+			template<typename ty>
+			friend struct types;
 		public:
 
 			value(value&& a)
 			{
 				held = a.held;
 			}
+			
+			~value() = default;
+
+		private:
 
 			t&& operator()() const
 			{
 				return std::move(*held);
 			}
-			
-			~value() = default;
-
-		private:
 
 			value(t&& a) :
 				held(&a)
@@ -120,21 +125,23 @@ namespace expression_templates
 		class result
 		{
 			friend struct result_maker;
+			template<typename ty>
+			friend struct types;
 		public:
 
 			result(result&& a) :
 				held(std::move(a.held))
 			{}
+			
+			~result() = default;
+
+		private:
 
 			decltype(std::declval<lambda_ty>()())
 				operator()() const
 			{
 				return std::move(held)();
 			}
-			
-			~result() = default;
-
-		private:
 
 			result(lambda_ty&& a) :
 				held(std::move(a))
@@ -154,7 +161,7 @@ namespace expression_templates
 		template<typename t>
 		struct types
 		{
-			static constexpr bool is_lazy()
+			static constexpr bool is_expression()
 			{
 				return false;
 			}
@@ -163,20 +170,44 @@ namespace expression_templates
 		template<typename t>
 		struct types<value<t>>
 		{
-			static constexpr bool is_lazy()
+			static constexpr bool is_expression()
 			{
 				return true;
+			}
+
+			static auto&& evaluate(value<t> const& a)
+			{
+				return a();
 			}
 		};
 
 		template<typename t>
 		struct types<result<t>>
 		{
-			static constexpr bool is_lazy()
+			static constexpr bool is_expression()
 			{
 				return true;
 			}
+
+			static decltype(std::declval<t>()()) evaluate(result<t> const& a)
+			{
+				return a();
+			}
 		};
+
+		template<typename t>
+		constexpr bool is_lazy()
+		{
+			return types<t>::is_expression();
+		}
+
+		template<typename t>
+		decltype(types<t>::evaluate(std::declval<t>())) eval(t const& a)
+		{
+			static_assert(is_lazy<t>(),"eval can only be used on a lazily evaluated expression");
+			return types<t>::evaluate(a);
+		}
+
 
 		template<typename t>
 		value<t> take(t&& a)
@@ -209,7 +240,7 @@ namespace expression_templates
 			template<typename funct_ty, typename...args_ty>
 			static auto make_result(funct_ty&& funct, args_ty&&...args)
 			{
-				static_assert(and_all<types<args_ty>::is_lazy()...>(),"arguments of \"call\" must be created through \"take\", \"ref\", \"use\", or another \"call\"");
+				static_assert(and_all<types<args_ty>::is_expression()...>(),"arguments of \"call\" must be created through \"take\", \"ref\", \"use\", or another \"call\"");
 				
 				auto&& lambda =
 				[=,funct = std::move(funct)]() mutable
@@ -221,11 +252,10 @@ namespace expression_templates
 
 		};
 
-		template<typename...ts>
-		auto call(ts&&...args)
+		template<typename funct_ty, typename...args_ty>
+		auto call(funct_ty&& funct, args_ty&&...args)
 		{
-			static_assert(sizeof...(ts) >= 1, "call requires at least one argument, an invokable object, followed by optional arguments to invoke the first argument with");
-			return result_maker::make_result<ts...>(std::forward<ts>(args)...);
+			return result_maker::make_result<funct_ty,args_ty...>(std::forward<funct_ty>(funct),std::forward<args_ty>(args)...);
 		}
 	}
 
@@ -233,4 +263,7 @@ namespace expression_templates
 	using impl::ref;
 	using impl::use;
 	using impl::call;
+	
+	using impl::is_lazy;
+	using impl::eval;
 }
