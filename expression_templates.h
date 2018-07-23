@@ -6,16 +6,13 @@ namespace expression_templates
 {
 	namespace impl
 	{
-		template<typename funct_ty, typename...args_ty>
-		auto call(funct_ty&& funct, args_ty&&...args);
 
 		template<typename t>
 		class value
 		{
-			template<typename t>
-			friend value<t> take(t&& a);
-			template<typename funct_ty, typename...args_ty>
-			friend auto expression_templates::impl::call(funct_ty&& funct, args_ty&&...args);
+			template<typename ty>
+			friend value<ty> take(ty&& a);
+			friend struct result_maker;
 		public:
 
 			value(value&& a) :
@@ -48,10 +45,9 @@ namespace expression_templates
 		template<typename t>
 		class value<t&>
 		{
-			template<typename t>
-			friend value<t&> ref(t& a);
-			template<typename funct_ty, typename...args_ty>
-			friend auto expression_templates::impl::call(funct_ty&& funct, args_ty&&...args);
+			template<typename ty>
+			friend value<ty&> ref(ty& a);
+			friend struct result_maker;
 		public:
 
 			value(value&& a)
@@ -86,10 +82,9 @@ namespace expression_templates
 		template<typename t>
 		class value<t&&>
 		{
-			template<typename t>
-			friend value<t&&> use(t&& a);
-			template<typename funct_ty, typename...args_ty>
-			friend auto expression_templates::impl::call(funct_ty&& funct, args_ty&&...args);
+			template<typename ty>
+			friend value<ty&&> use(ty&& a);
+			friend struct result_maker;
 		public:
 
 			value(value&& a)
@@ -124,8 +119,7 @@ namespace expression_templates
 		template<typename lambda_ty>
 		class result
 		{
-			template<typename funct_ty, typename...args_ty>
-			friend auto expression_templates::impl::call(funct_ty&& funct, args_ty&&...args);
+			friend struct result_maker;
 		public:
 
 			result(result&& a) :
@@ -160,7 +154,7 @@ namespace expression_templates
 		template<typename t>
 		struct types
 		{
-			static constexpr bool is_template()
+			static constexpr bool is_lazy()
 			{
 				return false;
 			}
@@ -169,7 +163,7 @@ namespace expression_templates
 		template<typename t>
 		struct types<value<t>>
 		{
-			static constexpr bool is_template()
+			static constexpr bool is_lazy()
 			{
 				return true;
 			}
@@ -178,7 +172,7 @@ namespace expression_templates
 		template<typename t>
 		struct types<result<t>>
 		{
-			static constexpr bool is_template()
+			static constexpr bool is_lazy()
 			{
 				return true;
 			}
@@ -209,17 +203,29 @@ namespace expression_templates
 			return (sizeof...(r)==0)  ?  (a)  :  (a && and_all<r...>());
 		}
 
-		template<typename funct_ty, typename...args_ty>
-		inline auto call(funct_ty&& funct, args_ty&&...args)
+		struct result_maker
 		{
-			static_assert(and_all<types<args_ty>::is_template()...>(),"arguments of \"call\" must be created through \"take\", \"ref\", \"use\", or another \"call\"");
-			
-			auto&& lambda =
-			[=,funct = std::move(funct)]() mutable
+
+			template<typename funct_ty, typename...args_ty>
+			static auto make_result(funct_ty&& funct, args_ty&&...args)
 			{
-				return funct(args()...);
-			};
-			return result<std::remove_reference_t<decltype(lambda)>>(std::move(lambda));
+				static_assert(and_all<types<args_ty>::is_lazy()...>(),"arguments of \"call\" must be created through \"take\", \"ref\", \"use\", or another \"call\"");
+				
+				auto&& lambda =
+				[=,funct = std::move(funct)]() mutable
+				{
+					return std::move(funct)(args()...);
+				};
+				return result<typename std::remove_reference<decltype(lambda)>::type>(std::move(lambda));
+			}
+
+		};
+
+		template<typename...ts>
+		auto call(ts&&...args)
+		{
+			static_assert(sizeof...(ts) >= 1, "call requires at least one argument, an invokable object, followed by optional arguments to invoke the first argument with");
+			return result_maker::make_result<ts...>(std::forward<ts>(args)...);
 		}
 	}
 
